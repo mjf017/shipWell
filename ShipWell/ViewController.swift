@@ -190,6 +190,7 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
         
         view.addSubview(tableView)
         
+        
         zoomingMap.frame = view.frame
         view.addSubview(zoomingMap)
         zoomingMap.isHidden = true
