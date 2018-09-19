@@ -10,43 +10,12 @@ import UIKit
 import CoreLocation
 import MapKit
 import UserNotifications
-
+import GoogleMaps
 
 class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate, CLLocationManagerDelegate, UITableViewDataSource, UITableViewDelegate, MKMapViewDelegate {
     
-    class User {
-       
-        private var contactName: String?
-        private var primaryEmail: String?
-        private var primaryPhone: String?
-        
-        func setUserDetails(name: String, email: String, phone: String){
-            
-            contactName = name
-            primaryEmail = email
-            primaryPhone = phone
-        
-        }
-        
-        func getContactName() -> String {
-            
-            return contactName ?? "N/A"
-        }
-        
-        func getPrimaryEmail() -> String {
-            
-            return primaryEmail ?? "N/A"
-        }
-        
-        func getPrimaryPhone() -> String {
-            
-            return primaryPhone ?? "N/A"
-        }
-        
-    }
-    
-    
-    func getApiData(url: String, token: String){
+
+   func getApiData(url: String, token: String){
         
         let sessionConfig = URLSessionConfiguration.default
         let session = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
@@ -68,14 +37,16 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
                     let companyInfo = userData["company"] as! NSDictionary
                 
                 let noData = "N/A"
-    self.user.setUserDetails(name: companyInfo["name"] as? String ?? noData, email: companyInfo["primary_email"] as? String ?? noData, phone: companyInfo["primary_phone_number"] as? String ?? noData)
+    self.user = User(contactName: companyInfo["name"] as? String ?? noData,
+                     primaryEmail: companyInfo["primary_email"] as? String ?? noData,
+                     primaryPhone: companyInfo["primary_phone_number"] as? String ?? noData)
                 
                 
                  DispatchQueue.main.async {
                 
-                var detailString = "Name: " + self.user.getContactName() + "\n"
-                detailString += "Email: " + self.user.getPrimaryEmail() + "\n"
-                    detailString += "Phone: " + self.user.getPrimaryPhone() + "\n"
+                    var detailString = "Name: " + self.user!.getContactName() + "\n"
+                detailString += "Email: " + self.user!.getPrimaryEmail() + "\n"
+                    detailString += "Phone: " + self.user!.getPrimaryPhone() + "\n"
                 
                 self.details.text = detailString
                 
@@ -96,13 +67,14 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
        task.resume()
     }
     
-    let user = User()
+    var user: User?
     var pingTimer: Timer!
     var locationManager: CLLocationManager!
     var tableView = UITableView()
     var locations: [Location] = []
     let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     let zoomingMap = MKMapView()
+    var googleMap: GMSMapView?
     
     let latitudeLabel = UILabel()
     let longitudeLabel = UILabel()
@@ -171,6 +143,10 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
    
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        GMSServices.provideAPIKey("AIzaSyAzex17uelQnoVtr9f_BX4KMh4Oel7Mcvk")
+      
+        
         initialLocation = true
         
         view.addSubview(userInfo)
@@ -190,7 +166,7 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
         
         view.addSubview(tableView)
         
-        
+       
         zoomingMap.frame = view.frame
         view.addSubview(zoomingMap)
         zoomingMap.isHidden = true
@@ -221,6 +197,45 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
         }
        
 }
+    
+    func openGoogleMap(lat: Float, long: Float){
+        
+        let camera = GMSCameraPosition.camera(withLatitude: CLLocationDegrees(lat), longitude: CLLocationDegrees(long), zoom: 15)
+        
+        googleMap = GMSMapView.map(withFrame: CGRect.zero, camera: camera)
+        googleMap?.frame = view.frame
+        
+        latitudeLabel.text = "Lat: " + String(lat)
+        longitudeLabel.text = "Long: " + String(long)
+        
+        let pingLocation = CLLocationCoordinate2DMake(CLLocationDegrees(lat), CLLocationDegrees(long))
+        let marker = GMSMarker(position: pingLocation)
+        marker.title = "(" + latitudeLabel.text! + ", " + longitudeLabel.text! + ")"
+        marker.map =  googleMap!
+        
+        let generator = UIImpactFeedbackGenerator()
+        generator.impactOccurred()
+        
+        googleMap?.alpha = 0.0
+        
+        view.addSubview(googleMap!)
+        view.addSubview(mapInfo)
+        
+        UIView.animate(withDuration:1.0, delay: 0.0, options: .allowUserInteraction,
+                       animations: {
+                        
+                        self.googleMap?.alpha = 1.0
+                        
+                       }, completion: nil )
+        
+        UIView.animate(withDuration:0.4, delay: 1.0, options: .allowUserInteraction,
+                       animations: {
+                        
+                        self.mapInfo.frame = CGRect(x:-1, y: UIScreen.main.bounds.size.height - 70, width: UIScreen.main.bounds.size.width + 2, height: 70)
+                        
+        }, completion: nil )
+        
+     }
    
     
     @objc func saveLocation(){
@@ -257,14 +272,11 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         
-        let storyBoard : UIStoryboard = UIStoryboard(name: "Main", bundle:nil)
-        let nextViewController = storyBoard.instantiateViewController(withIdentifier: "googleMapsView") as! googleMapsView
-        
         let location = locations[indexPath.row]
-        nextViewController.lat = String(location.latitude)
-        nextViewController.long = String(location.longitude)
+       
+        openGoogleMap(lat: location.latitude, long: location.longitude)
+       
         
-        self.present(nextViewController, animated:true, completion:nil)
     }
     
     
@@ -395,8 +407,9 @@ class ViewController: UIViewController,URLSessionDelegate,URLSessionDataDelegate
         UIView.animate(withDuration:0.3, delay: 0.4, options: .allowUserInteraction,
                        animations: {
                         self.zoomingMap.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
+                        self.googleMap?.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
                         self.zoomingMap.alpha = 0.0
-                        
+                        self.googleMap?.alpha = 0.0
         }, completion: nil )
         
     }
